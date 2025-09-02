@@ -1,6 +1,5 @@
 const router = require("express").Router();
 const User = require("../model/user");
-const jwt = require("jsonwebtoken");
 const { authenticateToken } = require("./userAuth");
 const Book = require("../model/book");
 
@@ -63,14 +62,19 @@ router.delete("/delete-book", authenticateToken, async (req, res) => {
 // get all books
 router.get("/get-all-books", async (req, res) => {
   try {
-    const books = await Book.find().sort({ createdAt: -1 });
-    // -1 means show items which is created now
-    return res.json({
-      status: "Success",
-      data: books,
-    });
-  } catch (error) {
-    return res.status(500).json({ message: "Error occure in get Book" });
+    let sortOption = {};
+    if (req.query.sort === "price_asc") {
+      sortOption.price = 1;
+    } else if (req.query.sort === "price_desc") {
+      sortOption.price = -1;
+    } else {
+      // Default: latest books first
+      sortOption.createdAt = -1;
+    }
+    const books = await Book.find().sort(sortOption);
+    res.json({ data: books });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -98,12 +102,56 @@ router.get("/get-book-by-id/:id", async (req, res) => {
 
     return res.json({ status: "Success", data: book });
   } catch (error) {
-    return res
-      .status(500)
-      .json({
-        message: "An internal server error occurred",
-        error: error.message,
-      });
+    return res.status(500).json({
+      message: "An internal server error occurred",
+      error: error.message,
+    });
   }
 });
+
+// New try
+
+// Search books by title or author
+router.get("/search-books", async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q) {
+      return res
+        .status(400)
+        .json({ message: "Query parameter 'q' is required" });
+    }
+    // Case-insensitive search in title or author
+    const books = await Book.find({
+      $or: [
+        { title: { $regex: q, $options: "i" } },
+        { author: { $regex: q, $options: "i" } },
+      ],
+    }).sort({ createdAt: -1 });
+    return res.json({
+      status: "Success",
+      data: books,
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Error occurred in search", error: error.message });
+  }
+});
+
+// Get all books with optional price sorting
+router.get("/", async (req, res) => {
+  try {
+    let sort = {};
+    if (req.query.sort === "price_asc") {
+      sort.price = 1; // ascending
+    } else if (req.query.sort === "price_desc") {
+      sort.price = -1; // descending
+    }
+    const books = await Book.find().sort(sort);
+    res.json(books);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
